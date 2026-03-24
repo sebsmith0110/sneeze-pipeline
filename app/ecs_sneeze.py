@@ -2,13 +2,12 @@ import imaplib
 import email
 from email.header import decode_header
 import pandas as pd
-from datetime import datetime 
 import email.utils
 import os
 import boto3
 from botocore.exceptions import ClientError
 import json
-from s3io import ensure_bucket, read_sneeze_data
+from s3io import read_sneeze_data
 
 LAT_DEFAULT = 51.5198104503113
 LONG_DEFAULT = -0.3083420544865619
