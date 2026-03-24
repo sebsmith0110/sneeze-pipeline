@@ -5,6 +5,8 @@ import requests
 from dateutil import tz
 from typing import List, Tuple
 import time
+import argparse
+from pathlib import Path
 
 WEATHER_ENDPOINT = "https://archive-api.open-meteo.com/v1/archive"
 AIR_QUALITY_ENDPOINT = "https://air-quality-api.open-meteo.com/v1/air-quality"
@@ -89,7 +91,6 @@ def fetch_openmeteo_hourly(endpoint: str, lat: float, lon: float, start_date: st
         return pd.DataFrame(columns=["hour_utc"] + variables)
     
     data = resp.json()
-    data
     if "hourly" not in data or "time" not in data["hourly"]: 
         sys.stderr.write(f"[WARN] No 'hourly/time' in response from {endpoint} @ ({lat},{lon})\n")
         return pd.DataFrame(columns=["hour_utc"] + variables)  
@@ -97,7 +98,7 @@ def fetch_openmeteo_hourly(endpoint: str, lat: float, lon: float, start_date: st
     hours = pd.to_datetime(pd.Series(data["hourly"]["time"]), utc=True)
     out = pd.DataFrame({"hour_utc": hours})
     for var in variables: 
-        out[var] = data["hourly"].get(var, [np.nan])
+        out[var] = data["hourly"].get(var, np.nan)
 
     return out
 
@@ -131,3 +132,30 @@ def add_weather_data(df: pd.DataFrame):
 
     merged = pd.concat(merged_frames, ignore_index=True)
     return merged
+
+def fetch_range_to_csv(lat: float, lon: float, start_date: str, end_date: str, output_csv: Path):
+    """
+    Fetch hourly weather + air quality for the given coordinates/date range and write to CSV.
+    """
+    data = fetch_bundle(lat, lon, start_date, end_date)
+    if data.empty:
+        raise RuntimeError("No data retrieved from Open-Meteo")
+    output_csv = Path(output_csv)
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    data.to_csv(output_csv, index=False)
+    print(f"Wrote {len(data)} hourly rows to {output_csv}")
+
+
+def _build_arg_parser():
+    parser = argparse.ArgumentParser(description="Fetch Open-Meteo weather + air quality bundle.")
+    parser.add_argument("--lat", type=float, required=True, help="Latitude in decimal degrees")
+    parser.add_argument("--lon", type=float, required=True, help="Longitude in decimal degrees")
+    parser.add_argument("--start", type=str, required=True, help="Start date ISO format YYYY-MM-DD")
+    parser.add_argument("--end", type=str, required=True, help="End date ISO format YYYY-MM-DD")
+    parser.add_argument("--output", type=str, required=True, help="Output CSV path")
+    return parser
+
+
+if __name__ == "__main__":
+    args = _build_arg_parser().parse_args()
+    fetch_range_to_csv(args.lat, args.lon, args.start, args.end, args.output)

@@ -14,8 +14,6 @@ LAT_DEFAULT = 51.5198104503113
 LONG_DEFAULT = -0.3083420544865619
 BUCKET = "seb-sneezeproject"
 
-s3 = boto3.client("s3")
-
 def _get_gmail_credentials_from_secrets():
     # Need to set this as an env variable in the ECS task definition
     secret_arn = os.getenv("GMAIL_SECRET_ARN")
@@ -25,8 +23,9 @@ def _get_gmail_credentials_from_secrets():
     except ClientError as e: 
         raise RuntimeError(f"Unable to retrieve secret {secret_arn}: {e}") from e
     
-    if "SecretString" in resp and resp["SecretString"]: 
-        secret = json.loads(resp["SecretString"])
+    if "SecretString" not in resp or not resp["SecretString"]:
+        raise RuntimeError(f"Secret {secret_arn} does not contain a SecretString value")
+    secret = json.loads(resp["SecretString"])
 
     username = secret.get("username")
     app_password = secret.get("app_password")
@@ -78,45 +77,39 @@ def fetch_rows_from_email():
         )
 
     USERNAME, APP_PASSWORD = _get_gmail_credentials_from_secrets()
+    try: 
+        mail = imaplib.IMAP4_SSL("imap.gmail.com")
+        mail.login(USERNAME, APP_PASSWORD)
+        mail.select("inbox")
 
-    mail = imaplib.IMAP4_SSL("imap.gmail.com")
-    mail.login(USERNAME, APP_PASSWORD)
-    mail.select("inbox")
-
-    data_out = pd.DataFrame(columns=["Date","Time","Latitude","Longitude"])
+        data_out = pd.DataFrame(columns=["Date","Time","Latitude","Longitude"])
 
 
-    status, message_numbers = mail.search(None, 'Subject "Sneezes"')
-    if status == "OK":
-        ids = message_numbers[0].split()
-        print(f"Found {len(ids)} emails")
+        status, message_numbers = mail.search(None, 'Subject "Sneezes"')
+        if status == "OK":
+            ids = message_numbers[0].split()
+            print(f"Found {len(ids)} emails")
 
-        for msg_id in ids: 
-            status, msg_data = mail.fetch(msg_id, "(RFC822)")
-            msg = email.message_from_bytes(msg_data[0][1])
-            msg_dt = email.utils.parsedate_to_datetime(msg["Date"])
-            msg_date = msg_dt.date() if msg_dt else None
+            for msg_id in ids:
+                status, msg_data = mail.fetch(msg_id, "(RFC822)")
+                msg = email.message_from_bytes(msg_data[0][1])
 
-            if msg_date and msg_date in processed_dates: 
-                continue
-            
-            body_lines = []
-            for part in msg.walk():
-                if part.get_content_type() != "text/plain": 
-                    continue
-                payload = part.get_payload(decode=True)
-                if payload is None:
-                    continue
-                text = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
-                body_lines.extend(text.splitlines())#
+                body_lines = []
+                for part in msg.walk():
+                    if part.get_content_type() != "text/plain":
+                        continue
+                    payload = part.get_payload(decode=True)
+                    if payload is None:
+                        continue
+                    text = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+                    body_lines.extend(text.splitlines())
 
-            df_rows = _lines_to_rows(body_lines)
-            if not df_rows.empty: 
-                data_out = pd.concat([data_out, df_rows], ignore_index=True)
-
-    mail.close()
-    mail.logout()
+                df_rows = _lines_to_rows(body_lines)
+                if not df_rows.empty:
+                    df_rows = df_rows[~df_rows["Date"].isin(processed_dates)]
+                    data_out = pd.concat([data_out, df_rows], ignore_index=True)
+    finally:
+        mail.close()
+        mail.logout()
 
     return data_out
-
-

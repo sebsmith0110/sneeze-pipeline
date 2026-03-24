@@ -1,3 +1,6 @@
 __pycache__/
 .dockerignore
 .env
+CLAUDE.md
+CODE_REVIEW.md
+*.csv
