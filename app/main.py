@@ -13,5 +13,6 @@ def main():
     data_to_add = add_weather_data(email_data)
     append_sneeze_data("seb-sneezeproject", data_to_add)
 
+
 if __name__ == "__main__": 
     main()

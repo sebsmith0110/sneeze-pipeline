@@ -28,6 +28,7 @@ def ensure_bucket(bucket_name):
         else:
             raise
 
+
 def read_sneeze_data(bucket_name): 
     try:
         obj = s3.get_object(Bucket=bucket_name, Key=FILENAME)
@@ -42,6 +43,7 @@ def read_sneeze_data(bucket_name):
         else:
             raise
 
+
 def append_sneeze_data(bucket_name, df: pd.DataFrame): 
     # Can be an empty dataframe
     existing_df = read_sneeze_data(bucket_name)
@@ -52,6 +54,7 @@ def append_sneeze_data(bucket_name, df: pd.DataFrame):
 
     s3.put_object(Bucket=bucket_name, Key=FILENAME, Body=csv_buffer.getvalue())
     print(f"Appended {len(df)} rows (total {len(df_combined)}) to s3://{bucket_name}/{FILENAME}")
+
 
 def dedupe_sneeze_data(bucket_name, subset=("Date", "Time"), keep="last"):
     """

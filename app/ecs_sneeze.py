@@ -67,6 +67,7 @@ def _lines_to_rows(lines):
     df = df.dropna(subset=["Date","Time"])
     return df
 
+
 def fetch_rows_from_email():
     current_data = read_sneeze_data(BUCKET)
     processed_dates = set()

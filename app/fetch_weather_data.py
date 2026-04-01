@@ -47,9 +47,11 @@ def parse_sneezes(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
+
 # Rounding to NEAREST hour by default
 def round_to_hour(ts: pd.Series, mode: str = "nearest") -> pd.Series:
     return ts.dt.round("h") if mode == "nearest" else ts.dt.floor("h")
+
 
 # By grouping sneezes by lat/lon, can get all corresponding weather data in 1 API call
 def daterange_for_group(df_group: pd.DataFrame, buffer_days: int) -> Tuple[str, str]: 
@@ -58,6 +60,7 @@ def daterange_for_group(df_group: pd.DataFrame, buffer_days: int) -> Tuple[str, 
     start = (min_dt - pd.Timedelta(days=buffer_days)).date().isoformat()
     end = (max_dt + pd.Timedelta(days=buffer_days)).date().isoformat()
     return start, end
+
 
 def http_get_with_retries(url: str, params: dict, attempts: int = 3, timeout: int = 60): 
     last_err = None
@@ -72,6 +75,7 @@ def http_get_with_retries(url: str, params: dict, attempts: int = 3, timeout: in
                 time.sleep(1.5 * i)
             else: 
                 raise last_err
+        
             
 def fetch_openmeteo_hourly(endpoint: str, lat: float, lon: float, start_date: str, 
                            end_date: str, variables: List[str]) -> pd.DataFrame: 
@@ -102,6 +106,7 @@ def fetch_openmeteo_hourly(endpoint: str, lat: float, lon: float, start_date: st
 
     return out
 
+
 def fetch_bundle(lat: float, lon: float, start_date: str, end_date: str) -> pd.DataFrame: 
     weather = fetch_openmeteo_hourly(WEATHER_ENDPOINT, lat, lon, start_date, end_date, WEATHER_VARS)
     aq = fetch_openmeteo_hourly(AIR_QUALITY_ENDPOINT, lat, lon, start_date, end_date, AQ_VARS)
@@ -110,6 +115,7 @@ def fetch_bundle(lat: float, lon: float, start_date: str, end_date: str) -> pd.D
     bundle["_lat"] = lat
     bundle["_lon"] = lon
     return bundle.sort_values("hour_utc").reset_index(drop=True)
+
 
 def add_weather_data(df: pd.DataFrame): 
     sneezes = parse_sneezes(df)   
@@ -132,6 +138,7 @@ def add_weather_data(df: pd.DataFrame):
 
     merged = pd.concat(merged_frames, ignore_index=True)
     return merged
+
 
 def fetch_range_to_csv(lat: float, lon: float, start_date: str, end_date: str, output_csv: Path):
     """
