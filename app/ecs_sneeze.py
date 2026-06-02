@@ -125,7 +125,7 @@ def _parse_bodies_to_df(email_bodies):
         return pd.DataFrame(columns=["Date", "Time", "Latitude", "Longitude"])
     return pd.concat(frames, ignore_index=True)
 
-def fetch_rows_from_email():
+def fetch_rows_from_emails():
     processed_dates = _get_processed_dates(BUCKET)
     username, password = _get_gmail_credentials_from_secrets()
     email_bodies = _fetch_sneeze_email_bodies(username, password)

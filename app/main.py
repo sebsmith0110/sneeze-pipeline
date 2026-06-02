@@ -1,5 +1,5 @@
 import pandas as pd
-from ecs_sneeze import fetch_rows_from_email
+from ecs_sneeze import fetch_rows_from_emails
 from s3io import append_sneeze_data
 from fetch_weather_data import add_weather_data
 
