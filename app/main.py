@@ -5,7 +5,7 @@ from fetch_weather_data import add_weather_data
 
 
 def main(): 
-    email_data = fetch_rows_from_email()
+    email_data = fetch_rows_from_emails()
     if email_data is None or email_data.empty: 
         print("No new sneezes to record...")
         return

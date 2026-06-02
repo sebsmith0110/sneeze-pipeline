@@ -67,48 +67,67 @@ def _lines_to_rows(lines):
     df = df.dropna(subset=["Date","Time"])
     return df
 
-def fetch_rows_from_email():
-    current_data = read_sneeze_data(BUCKET)
+# Used to ensure no duplicates added to database
+def _get_processed_dates(bucket): 
+    current_data = read_sneeze_data(bucket)
     processed_dates = set()
-    if not current_data.empty and "Date" in current_data:
-        processed_dates = set(
+    if not current_data.empty and "Date" in current_data: 
+        processed_dates = set( 
             pd.to_datetime(current_data["Date"], errors="coerce").dt.date.dropna()
         )
+    return processed_dates
 
-    USERNAME, APP_PASSWORD = _get_gmail_credentials_from_secrets()
+# returns the email bodies of all sneezee emails 
+def _fetch_sneeze_email_bodies(username, password):
+    email_bodies = []
+    
     try: 
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
-        mail.login(USERNAME, APP_PASSWORD)
+        mail.login(username, password)
         mail.select("inbox")
-
-        data_out = pd.DataFrame(columns=["Date","Time","Latitude","Longitude"])
 
 
         status, message_numbers = mail.search(None, 'Subject "Sneezes"')
-        if status == "OK":
-            ids = message_numbers[0].split()
-            print(f"Found {len(ids)} emails")
+        if status != "OK":
+            return email_bodies
 
-            for msg_id in ids:
-                status, msg_data = mail.fetch(msg_id, "(RFC822)")
-                msg = email.message_from_bytes(msg_data[0][1])
+        ids = message_numbers[0].split()
+        print(f"Found {len(ids)} emails")
 
-                body_lines = []
-                for part in msg.walk():
-                    if part.get_content_type() != "text/plain":
-                        continue
-                    payload = part.get_payload(decode=True)
-                    if payload is None:
-                        continue
-                    text = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
-                    body_lines.extend(text.splitlines())
+        for msg_id in ids:
+            status, msg_data = mail.fetch(msg_id, "(RFC822)")
+            msg = email.message_from_bytes(msg_data[0][1])
+            
+            body_lines = []
+            for part in msg.walk():
+                if part.get_content_type() != "text/plain":
+                    continue
+                payload = part.get_payload(decode=True)
+                if payload is None:
+                    continue
+                text = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+                body_lines.extend(text.splitlines())
 
-                df_rows = _lines_to_rows(body_lines)
-                if not df_rows.empty:
-                    df_rows = df_rows[~df_rows["Date"].isin(processed_dates)]
-                    data_out = pd.concat([data_out, df_rows], ignore_index=True)
-    finally:
+                if body_lines: 
+                    email_bodies.append(body_lines)
+    
+    finally: 
         mail.close()
         mail.logout()
+    
+    return email_bodies
 
-    return data_out
+def _parse_bodies_to_df(email_bodies):
+    # Putting dataframes into list for easy concatenation
+    frames = [_lines_to_rows(lines) for lines in email_bodies]
+    frames = [df for df in frames if not df.empty]
+    if not frames: 
+        return pd.DataFrame(columns=["Date", "Time", "Latitude", "Longitude"])
+    return pd.concat(frames, ignore_index=True)
+
+def fetch_rows_from_email():
+    processed_dates = _get_processed_dates(BUCKET)
+    username, password = _get_gmail_credentials_from_secrets()
+    email_bodies = _fetch_sneeze_email_bodies(username, password)
+    df = _parse_bodies_to_df(email_bodies)
+    return df[~df["Date"].isin(processed_dates)]
