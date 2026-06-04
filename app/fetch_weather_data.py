@@ -7,6 +7,7 @@ from typing import List, Tuple
 import time
 import argparse
 from pathlib import Path
+from datetime import date
 
 WEATHER_ENDPOINT = "https://archive-api.open-meteo.com/v1/archive"
 AIR_QUALITY_ENDPOINT = "https://air-quality-api.open-meteo.com/v1/air-quality"
@@ -56,7 +57,7 @@ def daterange_for_group(df_group: pd.DataFrame, buffer_days: int) -> Tuple[str, 
     min_dt = df_group["sneeze_datetime_utc"].min()
     max_dt = df_group["sneeze_datetime_utc"].max()
     start = (min_dt - pd.Timedelta(days=buffer_days)).date().isoformat()
-    end = (max_dt + pd.Timedelta(days=buffer_days)).date().isoformat()
+    end = min((max_dt + pd.Timedelta(days=buffer_days)).date(), date.today()).isoformat() 
     return start, end
 
 def http_get_with_retries(url: str, params: dict, attempts: int = 3, timeout: int = 60): 
