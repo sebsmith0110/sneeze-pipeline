@@ -3,11 +3,11 @@ import pandas as pd
 import numpy as np
 import requests
 from dateutil import tz
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import time
 import argparse
 from pathlib import Path
-from datetime import date
+from datetime import datetime, timezone
 
 WEATHER_ENDPOINT = "https://archive-api.open-meteo.com/v1/archive"
 AIR_QUALITY_ENDPOINT = "https://air-quality-api.open-meteo.com/v1/air-quality"
@@ -53,11 +53,20 @@ def round_to_hour(ts: pd.Series, mode: str = "nearest") -> pd.Series:
     return ts.dt.round("h") if mode == "nearest" else ts.dt.floor("h")
 
 # By grouping sneezes by lat/lon, can get all corresponding weather data in 1 API call
-def daterange_for_group(df_group: pd.DataFrame, buffer_days: int) -> Tuple[str, str]: 
-    min_dt = df_group["sneeze_datetime_utc"].min()
-    max_dt = df_group["sneeze_datetime_utc"].max()
+def daterange_for_group(
+    df_group: pd.DataFrame, buffer_days: int
+) -> Tuple[Optional[str], Optional[str]]:
+    # sneeze_datetime_utc is NaT for sneezes recorded during the UK DST
+    # fall-back hour (ambiguous local time); skip them rather than crash.
+    valid_dt = df_group["sneeze_datetime_utc"].dropna()
+    if valid_dt.empty:
+        return None, None
+
+    min_dt = valid_dt.min()
+    max_dt = valid_dt.max()
+    today_utc = datetime.now(timezone.utc).date()
     start = (min_dt - pd.Timedelta(days=buffer_days)).date().isoformat()
-    end = min((max_dt + pd.Timedelta(days=buffer_days)).date(), date.today()).isoformat() 
+    end = min((max_dt + pd.Timedelta(days=buffer_days)).date(), today_utc).isoformat()
     return start, end
 
 def http_get_with_retries(url: str, params: dict, attempts: int = 3, timeout: int = 60): 
@@ -88,7 +97,7 @@ def fetch_openmeteo_hourly(endpoint: str, lat: float, lon: float, start_date: st
         resp = http_get_with_retries(endpoint, params)
     except Exception as e: 
         # return empty df when get requests are unsuccessful
-        sys.stderr.write(f"[WARN] Fetch failed for {endpoint} @ ({lat},{lon} {start_date}->{end_date}: {e}\n")
+        sys.stderr.write(f"[WARN] Fetch failed for {endpoint} @ ({lat},{lon}) {start_date}->{end_date}: {e}\n")
         return pd.DataFrame(columns=["hour_utc"] + variables)
     
     data = resp.json()
@@ -112,13 +121,20 @@ def fetch_bundle(lat: float, lon: float, start_date: str, end_date: str) -> pd.D
     bundle["_lon"] = lon
     return bundle.sort_values("hour_utc").reset_index(drop=True)
 
-def add_weather_data(df: pd.DataFrame): 
-    sneezes = parse_sneezes(df)   
-    sneezes["weather_hour_utc"] = round_to_hour(sneezes["sneeze_datetime_utc"], "nearest")
+def add_weather_data(df: pd.DataFrame):
+    sneezes = parse_sneezes(df)
+    # floor (not nearest/round) so weather_hour_utc never crosses into the
+    # next calendar day, which could fall outside the fetched date range.
+    sneezes["weather_hour_utc"] = round_to_hour(sneezes["sneeze_datetime_utc"], "floor")
     merged_frames = []
 
-    for (lat, lon), g in sneezes.groupby(['Latitude', 'Longitude']): 
+    for (lat, lon), g in sneezes.groupby(['Latitude', 'Longitude']):
         start, end = daterange_for_group(g, 1)
+        if start is None:
+            # Every sneeze in this group has an unresolvable (NaT) local
+            # timestamp, e.g. the UK DST fall-back hour — nothing to fetch.
+            merged_frames.append(g)
+            continue
         bundle = fetch_bundle(lat, lon, start, end)
 
         # Merge onto group's sneeze rows

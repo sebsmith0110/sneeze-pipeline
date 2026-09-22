@@ -20,11 +20,11 @@ SNEEZE_COLUMNS = [
 # Note that BytesIO is used so that data is stored in RAM, no temp files need to be created
 
 def _ensure_bucket(bucket_name):
-    try: 
+    try:
         s3.head_bucket(Bucket=bucket_name)
     except ClientError as e:
         if e.response["Error"]["Code"] == "404":
-            print(f"Bucket {bucket_name} not found")
+            raise RuntimeError(f"Bucket {bucket_name} not found") from e
         else:
             raise
 
@@ -42,8 +42,9 @@ def _read_sneeze_data(bucket_name):
         else:
             raise
 
-def append_sneeze_data(bucket_name, df: pd.DataFrame): 
+def append_sneeze_data(bucket_name, df: pd.DataFrame):
     # Can be an empty dataframe
+    _ensure_bucket(bucket_name)
     existing_df = _read_sneeze_data(bucket_name)
     df_combined = pd.concat([existing_df, df], ignore_index=True)
     csv_buffer = io.BytesIO()
@@ -58,6 +59,7 @@ def dedupe_sneeze_data(bucket_name, subset=("Date", "Time"), keep="last"):
     Remove duplicate rows from the sneeze CSV stored in S3, keeping the last entry
     for each Date/Time pair by default.
     """
+    _ensure_bucket(bucket_name)
     df = _read_sneeze_data(bucket_name)
     if df.empty:
         print(f"No data found in s3://{bucket_name}/{FILENAME}, nothing to deduplicate.")

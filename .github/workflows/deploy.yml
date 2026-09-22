@@ -11,8 +11,12 @@ env:
   CONTAINER_NAME: seb-sneeze-project-container
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
   deploy:
     name: Build and Deploy
+    needs: test
     runs-on: ubuntu-latest
 
     steps:

@@ -28,6 +28,10 @@ def _get_gmail_credentials_from_secrets():
 
     username = secret.get("username")
     app_password = secret.get("app_password")
+    if not username or not app_password:
+        raise RuntimeError(
+            f"Secret {secret_arn} is missing 'username' and/or 'app_password' keys"
+        )
     return username, app_password
 
 
@@ -80,12 +84,14 @@ def _get_processed_dates(bucket):
 # returns the email bodies of all sneezee emails 
 def _fetch_sneeze_email_bodies(username, password):
     email_bodies = []
-    
-    try: 
+    mail = None
+    selected = False
+
+    try:
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         mail.login(username, password)
         mail.select("inbox")
-
+        selected = True
 
         status, message_numbers = mail.search(None, 'Subject "Sneezes"')
         if status != "OK":
@@ -97,7 +103,7 @@ def _fetch_sneeze_email_bodies(username, password):
         for msg_id in ids:
             status, msg_data = mail.fetch(msg_id, "(RFC822)")
             msg = email.message_from_bytes(msg_data[0][1])
-            
+
             body_lines = []
             for part in msg.walk():
                 if part.get_content_type() != "text/plain":
@@ -108,13 +114,24 @@ def _fetch_sneeze_email_bodies(username, password):
                 text = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
                 body_lines.extend(text.splitlines())
 
-                if body_lines: 
-                    email_bodies.append(body_lines)
-    
-    finally: 
-        mail.close()
-        mail.logout()
-    
+            if body_lines:
+                email_bodies.append(body_lines)
+
+    finally:
+        if mail is not None:
+            # close() is only legal after a successful select(); calling it
+            # otherwise raises and masks whatever exception triggered this
+            # finally block in the first place.
+            if selected:
+                try:
+                    mail.close()
+                except Exception:
+                    pass
+            try:
+                mail.logout()
+            except Exception:
+                pass
+
     return email_bodies
 
 def _parse_bodies_to_df(email_bodies):
