@@ -1,7 +1,7 @@
 __pycache__/
 .pytest_cache/
-.dockerignore
 .env
 CLAUDE.md
 CODE_REVIEW.md
 *.csv
+.venv/
