@@ -15,16 +15,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      # Installs uv; uv then reads .python-version and fetches Python 3.11 itself
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.11"
+          version: "0.13.7"
+          enable-cache: true
 
+      # --locked fails if uv.lock is out of date with pyproject.toml.
+      # Dev dependencies (pytest, moto, ...) are included by default.
       - name: Install dependencies
-        run: pip install -r app/requirements-dev.txt
+        run: uv sync --locked
 
       - name: Check code compiles
-        run: python -m compileall app -q
+        run: uv run python -m compileall app -q
 
       - name: Run tests
-        run: pytest
+        run: uv run pytest

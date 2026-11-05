@@ -1,14 +1,14 @@
+
 FROM python:3.11-slim
+# Pinned to match the local uv version; bump deliberately, never use :latest
+COPY --from=ghcr.io/astral-sh/uv:0.13.7 /uv /usr/local/bin/uv
 
-# System deps for pandas
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc build-essential ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
-
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 WORKDIR /app
-COPY app/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Dependencies first so this layer is cached when only code changes
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --no-install-project
 
 COPY app/ ./
-
-CMD ["python","-u","main.py"]
+CMD ["/app/.venv/bin/python", "-u", "main.py"]
